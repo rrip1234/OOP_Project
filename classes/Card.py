@@ -17,23 +17,23 @@ class DirInfo:
         self.can_dia = can_dia
 
 class BaseCard:
-    def __init__(self, name, cost, script, subscript, image):
+    def __init__(self, name, cost, script, subscript, image, precon, abillity):
         self.name = name
         self.cost = cost
         self.script = script
         self.subscript = subscript
         self.image = image
+        self.isActivable = precon
+        self.ability = abillity
     
     def info(self):
         return self.name, self.cost, self.script, self.subscript, self.image
 
 class RoleCard(BaseCard):
-    def __init__(self, name, cost, script, subscript, direction: DirInfo, image):
-        super().__init__(name, cost, script, subscript, image)
+    def __init__(self, name, cost, script, subscript, precon, abillity, direction: DirInfo, image):
+        super().__init__(name, cost, script, subscript, image, precon, abillity)
         self.direction = direction
 
 class SpecialCard(BaseCard):
     def __init__(self, name, cost, script, subscript, precon: Callable, abillity: Callable, image):
-        super().__init__(name, cost, script, subscript, image)
-        self.precon = precon
-        self.ability = abillity
+        super().__init__(name, cost, script, subscript, image, precon, abillity)

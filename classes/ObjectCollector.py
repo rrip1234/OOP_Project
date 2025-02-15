@@ -25,16 +25,23 @@ class ObjectCollector:
             yield
 
         self.queue.pop(0)
+        for obj in rq.res:
+            obj.is_clicked = False
         
         return rq.res
+
+    def isGood(self, obj):
+        return self.queue[0].isGood(obj)
 
     def addObj(self, obj: GameObject):
         if len(self.queue) > 0:
             if (now := self.queue[0]).isGood(obj):
                 if obj in now.res:
+                    obj.is_clicked = False
                     now.res.remove(obj)
-                else:
+                elif len(now.res) < now.num:
+                    obj.is_clicked = True
                     now.res.append(obj)
             
-            elif obj == 'next' and len(now.res) == now.num:
+            elif obj == 'ok' and len(now.res) == now.num:
                 now.resolved = True

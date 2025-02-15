@@ -1,6 +1,8 @@
 from enum import Enum, auto
 from abc import ABCMeta, abstractmethod
 from turtle import update
+
+from discord import Game
 from GameManager import GameManager, Pos, State, Phase
 from CardList import *
 from classes import *
@@ -29,8 +31,8 @@ def StartScene(next: GameState):
 FONT_COLOR = (42, 36, 31)
 FONT_COLOR2 = (32, 26, 21)
 
-MIN_DECK_SIZE = 12
-MAX_DECK_SIZE = 18
+MIN_DECK_SIZE = 18
+MAX_DECK_SIZE = 24
 MAX_CARD_NUM = 9
 
 ENEMY_DECK = ['pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn', 'pawn']
@@ -191,6 +193,9 @@ class PlayScene(Scene):
         self.next_btn = makeObject("images/next_button.png", "next", (1300, 150), (150, 75))
         self.obj_list.append(self.next_btn)
 
+        self.ok_btn = makeObject("images/ok_button.png", "ok", (1200, 250), (50, 50))
+        self.obj_list.append(self.ok_btn)
+
         self.wow_btn = makeObject("images/wowow.jpg", "up", (1300, 250), (50, 50))
         self.obj_list.append(self.wow_btn)
 
@@ -211,8 +216,6 @@ class PlayScene(Scene):
         
         for row in gm.board:
             for board in row:
-                if isinstance(board.piece, PieceObject):
-                    board.angle += 6 if board.piece.is_mine else -6
                 board.draw(screen)
 
         p_hand = gm.field_pos[Pos.P_HAND]
@@ -277,6 +280,9 @@ class PlayScene(Scene):
         if self.next_btn.rect.collidepoint(click_pos):
             new_clicked = self.next_btn
 
+        if self.ok_btn.rect.collidepoint(click_pos):
+            new_clicked = self.ok_btn
+
         if self.wow_btn.rect.collidepoint(click_pos):
             new_clicked = self.wow_btn
 
@@ -285,7 +291,7 @@ class PlayScene(Scene):
                 if card.rect.collidepoint(click_pos):
                     new_clicked = card
 
-        if gm.state in [State.ROLE, State.SPECIAL]:
+        if gm.state in [State.HAND]:
             if gm.field_pos[Pos.P_LAND].rect.collidepoint(click_pos):
                 new_clicked = gm.field_pos[Pos.P_LAND]
         else:
@@ -298,9 +304,43 @@ class PlayScene(Scene):
                 if board.rect.collidepoint(click_pos):
                     new_clicked = board
         
-        if new_clicked is not None:
-            gm.manageEvent(new_clicked)
-    
+        gm.manageEvent(new_clicked)
+
+    def setGlow(self, gm: GameManager):
+        for pos in [Pos.P_HAND, Pos.E_HAND, Pos.P_CEMETERY, Pos.E_CEMETERY, Pos.P_LAND, Pos.E_LAND]:
+            for cd in gm.field_pos[pos].cards:
+                cd.is_glow = False
+        for row in gm.board:
+            for board in row:
+                board.is_glow = False
+
+        if gm.phase is Phase.Land:
+            for pos in [Pos.P_HAND, Pos.P_LAND]:
+                for cd in gm.field_pos[pos].cards:
+                    cd.is_glow = True
+
+        elif gm.phase is Phase.Main:
+            if gm.collector.isCollecting():
+                for pos in [Pos.P_HAND, Pos.E_HAND, Pos.P_CEMETERY, Pos.E_CEMETERY, Pos.P_LAND, Pos.E_LAND]:
+                    for cd in gm.field_pos[pos].cards:
+                        cd.is_glow = gm.collector.isGood(cd)
+                for row in gm.board:
+                    for board in row:
+                        board.is_glow = gm.collector.isGood(board)
+            else:
+                for cd in gm.field_pos[Pos.P_HAND].cards:
+                    cd.is_glow = cd.base.isActivable(gm)
+        
+        elif gm.phase is Phase.Piece:
+            if gm.state is State.NONE:
+                for row in gm.board:
+                    for board in row:
+                        board.is_glow = (piece := board.piece) is not None and piece.is_mine and piece.card is not None
+            elif gm.state is State.PIECE:
+                for i in range(6):
+                    for j in range(6):
+                        gm.board[i][j].is_glow = (i, j) in gm.accessable
+
     def lateUpdate(self, events):
         if pygame.MOUSEBUTTONUP in events:
             self.checkClick(self.gm, events[pygame.MOUSEBUTTONUP].pos)
@@ -309,6 +349,8 @@ class PlayScene(Scene):
         screen.blit(now_phase, (1250, 50))
 
         updateCoroutine()
+
+        self.setGlow(self.gm)
         
         for pos in [Pos.P_HAND, Pos.E_HAND, Pos.P_LAND, Pos.E_LAND, Pos.P_DECK, Pos.E_DECK, Pos.P_CEMETERY, Pos.E_CEMETERY]:
             self.gm.updateObjState(pos)
@@ -329,10 +371,7 @@ class DeckSceen(Scene):
         self.obj_list: list[GameObject] = []
         self.card_objs: dict[str, GameObject] = {}
         self.deck_objs: list[GameObject] = []
-        self.board_objs: list[GameObject] = []
-        self.piece_objs: list[GameObject] = []
         self.deck: list[str] = deck
-        self.pieces: list[bool] = pieces
 
         self.temp_img = pygame.transform.smoothscale(pygame.image.load("images/temp.png"), (300, 432))
         self.big_card = makeObject(self.temp_img, "big_edit", (200, 266))
@@ -345,12 +384,6 @@ class DeckSceen(Scene):
         for i in range(MAX_DECK_SIZE):
             self.deck_objs.append(makeObject(self.empty_surface, f"deck_card{i}", (500 + 121 * (i % 6), 140 + 181 * (i // 6))))
         
-        self.empty_board = pygame.Surface((120, 120))
-        self.piece = pygame.image.load("images/wowow.jpg")
-        for i in range(12):
-            self.board_objs.append(makeObject(self.empty_board, f"edit_board{i}", (500 + 121 * (i % 6), 675 + 121 * (i // 6))))
-            self.piece_objs.append(makeObject(self.piece, f"edit_piece{i}", (500 + 121 * (i % 6), 675 + 121 * (i // 6)), (50, 50)))
-
         self.cardDB = GetCards()
         for name in self.cardDB:
             self.card_objs[name] = makeObject(self.cardDB[name].image, name, (0, 0), (150, 216))
@@ -364,9 +397,9 @@ class DeckSceen(Scene):
             event = events[pygame.MOUSEBUTTONDOWN]
             if event.button == 1:
                 if self.back_btn.rect.collidepoint(event.pos):
-                    global deck, pieces
+                    global deck#, pieces
                     deck = self.deck
-                    pieces = self.pieces
+                    #pieces = self.pieces
                     StartScene(GameState.MAIN)
                     return
                 click_pos = event.pos
@@ -376,13 +409,6 @@ class DeckSceen(Scene):
 
         for obj in self.obj_list:
             obj.draw(screen)
-
-        for obj in self.board_objs:
-            obj.draw(screen)
-
-        for i, obj in enumerate(self.piece_objs):
-            if self.pieces[i]:
-                obj.draw(screen)
 
         for i in range(len(self.deck_objs)):
             if i < len(self.deck):
@@ -426,11 +452,6 @@ class DeckSceen(Scene):
 
             if click_pos is not None and temp_card.rect.collidepoint(click_pos):
                 self.deck.pop(i)
-        
-        for i, obj in enumerate(self.board_objs):
-            if click_pos is not None and obj.rect.collidepoint(click_pos):
-                if self.pieces[i] == True or self.pieces.count(True) < 6:
-                    self.pieces[i] = not self.pieces[i]
 
         return None
 

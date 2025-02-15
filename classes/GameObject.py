@@ -46,42 +46,44 @@ class GameObject(pygame.sprite.Sprite):
 class CardObject(GameObject):
     def __init__(self, base_card: BaseCard, code: str, pos):
         super().__init__(base_card.image, code, pos)
-        self.card_info = base_card
+        self.base = base_card
 
         self.back_image = pygame.image.load('images/temp.png')
-        self.outline = pygame.image.load('images/outline.png')
+        self.outline = pygame.image.load('images/card_outline.png')
+        self.outline_selected = pygame.image.load('images/card_outline_selected.png')
+        self.glow_size = (self.size[0] + 150, self.size[1] + 120)
 
         self.is_front = True
-        self.is_focused = False
         self.is_moving = False
         self.is_glow = False
 
     def info(self):
-        return self.card_info.info()
+        return self.base.info()
     
     def myType(self):
-        if isinstance(self.card_info, RoleCard):
+        if isinstance(self.base, RoleCard):
             return RoleCard
-        elif isinstance(self.card_info, SpecialCard):
+        elif isinstance(self.base, SpecialCard):
             return SpecialCard
         else:
             return BaseCard
     
     def update_image(self):
         if self.is_glow:
-            img = self.outline.copy()
-            img.blit(self.original if self.is_front else self.back_image, (450, 600))
+            img = (self.outline_selected if self.is_clicked else self.outline)
+            img.blit(self.original if self.is_front else self.back_image, (75, 60))
         else:
-            img = self.original.copy() if self.is_front else self.back_image.copy()
+            img = self.original if self.is_front else self.back_image
+        
         if self.scale != 0:
-            img = pygame.transform.scale(img, tuple([int(self.scale * x) for x in self.size]))
+            img = pygame.transform.scale(img, tuple([int(self.scale * x) for x in (self.glow_size if self.is_glow else self.size)]))
         if self.angle != 1:
             img = pygame.transform.rotate(img, self.angle)
         self.rect = img.get_rect()
         self.rect.center = self.position
         self.image = img
         
-class PieceObject(GameObject):    
+class PieceObject(GameObject):
     def __init__(self, image, code, pos, is_mine: bool):
         super().__init__(image, code, pos)
         self.is_mine = is_mine
@@ -90,23 +92,24 @@ class PieceObject(GameObject):
         self.direction = None
         self.cdImg = None
         self.cnt = 0
-        self.hasDir = False
+
+        self.is_moved = False
+        self.card_changed = False
     
     def draw(self, screen):
         self.update_image()
-        if self.hasDir:
+        if self.card is not None:
             screen.blit(self.cdImg, self.rect.topleft, (4, 20.5, 79, 95.5))
         screen.blit(self.image, self.rect)
 
     def addCard(self, cd: CardObject):
-        if isinstance(cd.card_info, RoleCard):
-            self.hasDir = True
+        if isinstance(cd.base, RoleCard):
+            self.card_changed = True
             self.card = cd
-            self.direction = cd.card_info.direction
+            self.direction = cd.base.direction
             self.cdImg = pygame.transform.scale(cd.image, (83.33, 120))
     
     def getCard(self):
-        self.hasDir = False
         res = self.card
         self.card = None
         self.direction = None
@@ -120,7 +123,12 @@ class BoardObject(GameObject):
         self.x = x
         self.y = y
 
+        self.outline = pygame.image.load('images/board_outline.png')
+        self.outline_selected = pygame.image.load('images/board_outline_selected.png')
         self.piece = None
+        self.glow_size = (110, 110)
+
+        self.is_glow = False
 
     def getPiece(self):
         res = self.piece
@@ -129,6 +137,21 @@ class BoardObject(GameObject):
     
     def addPiece(self, piece: PieceObject):
         self.piece = piece
+
+    def update_image(self):
+        if self.is_glow:
+            img = (self.outline_selected if self.is_clicked else self.outline)
+            img.blit(self.original, (10, 10))
+        else:
+            img = self.original
+        
+        if self.scale != 0:
+            img = pygame.transform.scale(img, tuple([int(self.scale * x) for x in (self.glow_size if self.is_glow else self.size)]))
+        if self.angle != 1:
+            img = pygame.transform.rotate(img, self.angle)
+        self.rect = img.get_rect()
+        self.rect.center = self.position
+        self.image = img
 
     def draw(self, screen):
         self.update_image()
@@ -147,6 +170,7 @@ class Zone(GameObject):
         self.angle = angle
         self.scale = scale
         self.is_front = is_front
+        self.is_glow = False
 
     def getPos(self, i, num=-1):
         x, y = self.position

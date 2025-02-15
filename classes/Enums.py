@@ -15,8 +15,7 @@ class Pos(Enum):
 
 class State(Enum):
     NONE = auto()
-    ROLE = auto()
-    SPECIAL = auto()
+    HAND = auto()
     LAND = auto()
     ACTIVE = auto()
     PIECE = auto()

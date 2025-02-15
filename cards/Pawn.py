@@ -7,4 +7,4 @@ script = ''
 subscript = '돌이킬 수 없다.'
 direction = DirInfo(dir=[1, 0, 0, 0, 0, 0, 0, 0])
 
-AddCard(name, short, cost, script, subscript, direction)
+AddCard(name, short, cost, script, subscript, dir=direction)

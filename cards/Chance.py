@@ -12,7 +12,7 @@ def precon(gm: GameManager):
 def abillity(gm: GameManager, self_card: CardObject):
     condition = lambda obj: isinstance(obj, CardObject) and\
                             gm.isExist(Pos.P_CEMETERY, obj) and\
-                            isinstance(obj.card_info, RoleCard)
+                            isinstance(obj.base, RoleCard)
     
     request = Request(condition, "묘지에서 직위 카드 한 장을 선택해주세요.", 1)
 
@@ -25,4 +25,4 @@ def abillity(gm: GameManager, self_card: CardObject):
     gm.moveCard(self_card, Pos.P_HAND, Pos.P_CEMETERY, 0)
     gm.state = State.NONE
     
-AddCard(name, short, cost, script, subscript, abillity, precon)
+AddCard(name, short, cost, script, subscript, abillity=abillity, precon=precon)
