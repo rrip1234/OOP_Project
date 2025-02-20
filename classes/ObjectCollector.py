@@ -42,6 +42,11 @@ class ObjectCollector:
                 elif len(now.res) < now.num:
                     obj.is_clicked = True
                     now.res.append(obj)
+                elif now.num == 1:
+                    now.res[-1].is_clicked = False
+                    now.res.pop()
+                    obj.is_clicked = True
+                    now.res.append(obj)
             
             elif obj == 'ok' and len(now.res) == now.num:
                 now.resolved = True

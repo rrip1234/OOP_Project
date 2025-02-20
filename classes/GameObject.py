@@ -1,7 +1,5 @@
-import math
 import random
 from operator import add
-from numpy import isin
 import pygame
 from .Card import *
 
@@ -95,25 +93,25 @@ class PieceObject(GameObject):
 
         self.is_moved = False
         self.card_changed = False
-    
-    def draw(self, screen):
-        self.update_image()
-        if self.card is not None:
-            screen.blit(self.cdImg, self.rect.topleft, (4, 20.5, 79, 95.5))
-        screen.blit(self.image, self.rect)
 
     def addCard(self, cd: CardObject):
         if isinstance(cd.base, RoleCard):
             self.card_changed = True
             self.card = cd
             self.direction = cd.base.direction
-            self.cdImg = pygame.transform.scale(cd.image, (83.33, 120))
+            self.cdImg = cd.image
     
     def getCard(self):
         res = self.card
         self.card = None
         self.direction = None
         return res
+    
+    def draw(self, screen):
+        self.update_image()
+        if self.card is not None:
+            screen.blit(self.cdImg, tuple(map(add, self.rect.topleft, (-19, -19))), (3, 12, 88, 88))
+        screen.blit(self.image, self.rect)
 
 class BoardObject(GameObject):
     def __init__(self, image: pygame.surface.Surface, code, x: int, y: int):
@@ -167,8 +165,8 @@ class Zone(GameObject):
         self.num = 0
         self.is_enemy = is_enemy
 
-        self.angle = angle
-        self.scale = scale
+        self.card_angle = angle
+        self.card_scale = scale
         self.is_front = is_front
         self.is_glow = False
 
@@ -229,6 +227,9 @@ class HandZone(Zone):
         
         x = (i - num / 2 + 0.5) * 60
         y = 360
+
+        if len(self.cards) >= i + 1 and self.cards[i].is_clicked:
+            y -= 30
 
         if self.is_enemy:
             x = -x

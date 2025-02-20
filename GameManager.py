@@ -13,17 +13,20 @@ class GameManager:
         self.collector = ObjectCollector(self)
         self.cost = 0
         
+        self.land_surface = pygame.Surface((170, 450))
+        self.land_surface.fill((110, 80, 40))
+
         self.empty = pygame.Surface((120, 180), pygame.SRCALPHA)
         self.back = pygame.image.load('images/temp.png')
 
         self.field_pos: dict[Pos, Zone] = {Pos.P_DECK:             Zone(self.empty, "pdeck", (1100, 650), False, 0,  0.125, False),
                                            Pos.P_HAND:         HandZone(self.empty, "phand", (0, 800),    False, 0,  0.125, True),
                                            Pos.P_CEMETERY: CemeteryZone(self.empty, "pcmtr", (1200, 760), False, 0,  0.125, True),
-                                           Pos.P_LAND:         LandZone(self.empty, "pland", (1250, 500), False, 90, 0.125, True),
+                                           Pos.P_LAND:  LandZone(self.land_surface, "pland", (1250, 520), False, 90, 0.125, True),
                                            Pos.E_DECK:             Zone(self.empty, "edeck", (340, 250),  True, 180, 0.125, False),
                                            Pos.E_HAND:         HandZone(self.empty, "ehand", (0, 100),    True, 180, 0.125, False),
                                            Pos.E_CEMETERY: CemeteryZone(self.empty, "ecmtr", (200, 140),  True, 180, 0.125, True),
-                                           Pos.E_LAND:         LandZone(self.empty, "eland", (190, 400),  True, 270, 0.125, False)}
+                                           Pos.E_LAND:  LandZone(self.land_surface, "eland", (190, 380),  True, 270, 0.125, False)}
         
         self.state = State.NONE
         self.phase = Phase.Land if is_first else Phase.Enemy
@@ -74,8 +77,6 @@ class GameManager:
         
         if cd is None:
             return
-        
-        print(start, end)
 
         if time != 0:
             end_pos = end.position if isinstance(end, PieceObject) else self.field_pos[end].nextPos()
@@ -126,29 +127,6 @@ class GameManager:
                         q.put((nx, ny, moved + 1))
         return res
 
-    def updateObjState(self, pos, t=0.5):
-        if isinstance(pos, BoardObject):
-            if (piece := pos.piece)is not None:
-                piece.position = lerpVector(piece.position, pos.position, t)
-                if (cd := piece.card) is not None:
-                    cd.position = lerpVector(cd.position, piece.position, t)
-                    cd.angle = lerpFloat(cd.angle, piece.angle, t)
-
-        elif isinstance(pos, Pos):
-            zone = self.field_pos[pos]
-            cards = zone.cards
-            for i, cd in enumerate(cards):
-                if not cd.is_moving:
-                    if pos is Pos.P_HAND and cd.is_clicked:
-                        cd.position = lerpVector(cd.position, tuple(map(add, zone.getPos(i), (0, -30))), t)
-                    elif pos is Pos.P_LAND and self.cost > i:
-                        cd.position = lerpVector(cd.position, tuple(map(add, zone.getPos(i), (40, 0))), t)
-                    else:
-                        cd.position = lerpVector(cd.position, zone.getPos(i), t)
-                    cd.angle = lerpFloat(cd.angle, zone.angle, t)
-                    cd.scale = lerpFloat(cd.scale, zone.scale, t)
-                cd.is_front = zone.is_front
-
     def initState(self):
         for piece in self.pieces:
             piece.is_moved = False
@@ -193,18 +171,25 @@ class GameManager:
 
         elif self.phase is Phase.Land:
             if isinstance(obj, CardObject):
+                self.buffer = None
                 if self.isExist(Pos.P_LAND, obj):
                     self.moveCard(obj, Pos.P_LAND, Pos.P_HAND, 0)
                 elif self.isExist(Pos.P_HAND, obj):
                     self.moveCard(obj, Pos.P_HAND, Pos.P_LAND, 0)
+            if isinstance(obj, BoardObject):
+                obj.is_clicked = True
+                self.buffer = obj
             
         elif self.phase is Phase.Main:
             if self.state is State.NONE:
                 if isinstance(obj, CardObject):
+                    self.buffer = obj
                     obj.is_clicked = True
                     if self.isExist(Pos.P_HAND, obj):
-                        self.buffer = obj
                         self.state = State.HAND
+                elif isinstance(obj, BoardObject):
+                    obj.is_clicked = True
+                    self.buffer = obj
             
             elif self.state is State.HAND:
                 if isinstance(self.buffer, CardObject):
@@ -220,7 +205,11 @@ class GameManager:
                         obj.is_clicked = True
                         self.buffer = obj
                     else:
-                        self.buffer = None
+                        if isinstance(obj, CardObject) or isinstance(obj, BoardObject):
+                            obj.is_clicked = True
+                            self.buffer = obj
+                        else:
+                            self.buffer = None
                         self.state = State.NONE
         
         elif self.phase is Phase.Piece:
@@ -232,11 +221,13 @@ class GameManager:
                     self.buffer = obj
                     self.accessable = self.getAccessable(obj.x, obj.y, direction)
                     self.state = State.PIECE
+                elif isinstance(obj, CardObject):
+                    obj.is_clicked = True
+                    self.buffer = obj
             
             elif self.state is State.PIECE:
-                if isinstance(obj, BoardObject):
-                    if isinstance(self.buffer, BoardObject):
-                        
+                if isinstance(self.buffer, BoardObject):
+                    if isinstance(obj, BoardObject):
                         if (obj.x, obj.y) in self.accessable:
                             target = self.board[obj.x][obj.y]
                             if (piece := target.piece) is not None and not piece.is_mine:
@@ -250,6 +241,16 @@ class GameManager:
                             obj.addPiece(self.buffer.getPiece()) # type: ignore
                             self.changePhase()
 
-                    self.accessable = []
-                    self.buffer = None
-                    self.state = State.NONE
+                        elif obj.piece is not None and obj.piece.is_mine and obj.piece.direction is not None:
+                            obj.is_clicked = True
+                            self.buffer = obj
+                            self.accessable = self.getAccessable(obj.x, obj.y, obj.piece.direction)
+                        else:
+                            self.accessable = []
+                            self.buffer = None
+                            self.state = State.NONE
+        
+        elif self.phase is Phase.Enemy:
+            if isinstance(obj, BoardObject) or isinstance(obj, CardObject):
+                obj.is_clicked = True
+                self.buffer = obj

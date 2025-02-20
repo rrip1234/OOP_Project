@@ -1,5 +1,6 @@
 from enum import Enum, auto
 from abc import ABCMeta, abstractmethod
+from re import L
 from turtle import update
 
 from discord import Game
@@ -183,6 +184,7 @@ class PlayScene(Scene):
     def __init__(self):
         self.obj_list: list[GameObject] = []
         self.clicked_obj = None
+        self.focused = []
 
         self.gm = GameManager(makeDeck(deck), pieces, makeDeck(ENEMY_DECK), ENEMY_PIECE, 5, True)
         self.setInitState(self.gm)
@@ -209,19 +211,25 @@ class PlayScene(Scene):
                 piece.draw(screen)
 
         for pos in [Pos.P_HAND, Pos.E_HAND, Pos.P_LAND, Pos.E_LAND, Pos.P_DECK, Pos.E_DECK]:
-            gm.updateObjState(pos)
+            self.updateObjState(self.gm, pos)
 
     def showPlayScreen(self, gm: GameManager):
-        focused = None
+        clicked = None
         
         for row in gm.board:
             for board in row:
+                if board.is_clicked and board.piece is not None and board.piece.card is not None:
+                    clicked = board.piece.card
                 board.draw(screen)
+
+        for pos in Pos:
+            zone = gm.field_pos[pos]
+            zone.draw(screen)
 
         p_hand = gm.field_pos[Pos.P_HAND]
         for i, card_obj in enumerate(p_hand.cards):
             if card_obj.is_clicked:
-                focused = card_obj
+                clicked = card_obj
             card_obj.draw(screen)
 
         e_hand = gm.field_pos[Pos.E_HAND]
@@ -237,19 +245,19 @@ class PlayScene(Scene):
         p_cemetery = gm.field_pos[Pos.P_CEMETERY]
         for i, card_obj in enumerate(p_cemetery.cards):
             if card_obj.is_clicked:
-                focused = card_obj
+                clicked = card_obj
             card_obj.draw(screen)
         
         e_cemetery = gm.field_pos[Pos.E_CEMETERY]
         for i, card_obj in enumerate(e_cemetery.cards):
             if card_obj.is_clicked:
-                focused = card_obj
+                clicked = card_obj
             card_obj.draw(screen)
 
         p_land = gm.field_pos[Pos.P_LAND]
         for i, card_obj in enumerate(p_land.cards):
             if card_obj.is_clicked:
-                focused = card_obj
+                clicked = card_obj
             card_obj.draw(screen)
         
         e_land = gm.field_pos[Pos.E_LAND]
@@ -258,10 +266,8 @@ class PlayScene(Scene):
         
         self.big_card.original = self.temp_img
 
-        if focused is not None:
-            focused.draw(screen)
-
-            info = setBigCard(self.big_card, focused.info())
+        if clicked is not None:
+            info = setBigCard(self.big_card, clicked.info())
 
             screen.blit(info[0], (50, 600))
             screen.blit(info[1], (50, 640))
@@ -270,6 +276,35 @@ class PlayScene(Scene):
 
         self.big_card.draw(screen)
     
+    def updateObjState(self, gm: GameManager, pos, t=0.5):
+        if isinstance(pos, BoardObject):
+            if (piece := pos.piece)is not None:
+                piece.position = lerpVector(piece.position, pos.position, t)
+                if (cd := piece.card) is not None:
+                    cd.position = lerpVector(cd.position, piece.position, t)
+                    cd.angle = lerpFloat(cd.angle, piece.angle, t)
+
+        elif isinstance(pos, Pos):
+            zone = gm.field_pos[pos]
+            cards = zone.cards
+            for i, cd in enumerate(cards):
+                if not cd.is_moving:
+                    cd.position = lerpVector(cd.position, zone.getPos(i), t)
+                    cd.angle = lerpFloat(cd.angle, zone.card_angle, t)
+                    cd.scale = lerpFloat(cd.scale, zone.card_scale, t)
+                if gm.phase is not Phase.Land and pos is Pos.P_LAND and len(zone.cards) - gm.cost > i and zone not in self.focused:
+                    cd.is_front = False
+                else:
+                    cd.is_front = zone.is_front
+
+    def checkFocus(self, gm: GameManager):
+        mouse_pos = pygame.mouse.get_pos()
+
+        self.focused = []
+
+        if (land := gm.field_pos[Pos.P_LAND]).rect.collidepoint(mouse_pos):
+            self.focused.append(land)
+
     def checkClick(self, gm: GameManager, click_pos):
         if self.back_btn.rect.collidepoint(click_pos):
             StartScene(GameState.MAIN)
@@ -291,13 +326,9 @@ class PlayScene(Scene):
                 if card.rect.collidepoint(click_pos):
                     new_clicked = card
 
-        if gm.state in [State.HAND]:
-            if gm.field_pos[Pos.P_LAND].rect.collidepoint(click_pos):
-                new_clicked = gm.field_pos[Pos.P_LAND]
-        else:
-            for land in gm.field_pos[Pos.P_LAND].cards:
-                if land.rect.collidepoint(click_pos):
-                    new_clicked = land
+        for land in gm.field_pos[Pos.P_LAND].cards:
+            if land.rect.collidepoint(click_pos):
+                new_clicked = land
         
         for row in gm.board:
             for board in row:
@@ -333,17 +364,21 @@ class PlayScene(Scene):
         
         elif gm.phase is Phase.Piece:
             if gm.state is State.NONE:
-                for row in gm.board:
-                    for board in row:
-                        board.is_glow = (piece := board.piece) is not None and piece.is_mine and piece.card is not None
+                for i in range(6):
+                    for j in range(6):
+                        if (piece := gm.board[i][j].piece) is not None and piece.is_mine and piece.card is not None:
+                            accessable = gm.getAccessable(i, j, piece.direction) # type: ignore
+                            gm.board[i][j].is_glow = len(accessable) > 0
             elif gm.state is State.PIECE:
                 for i in range(6):
                     for j in range(6):
-                        gm.board[i][j].is_glow = (i, j) in gm.accessable
+                        gm.board[i][j].is_glow = ((i, j) in gm.accessable) or gm.board[i][j].is_clicked
 
     def lateUpdate(self, events):
         if pygame.MOUSEBUTTONUP in events:
             self.checkClick(self.gm, events[pygame.MOUSEBUTTONUP].pos)
+        
+        self.checkFocus(self.gm)
 
         now_phase = getFont(2).render(self.gm.phase.value, True, FONT_COLOR)
         screen.blit(now_phase, (1250, 50))
@@ -353,11 +388,11 @@ class PlayScene(Scene):
         self.setGlow(self.gm)
         
         for pos in [Pos.P_HAND, Pos.E_HAND, Pos.P_LAND, Pos.E_LAND, Pos.P_DECK, Pos.E_DECK, Pos.P_CEMETERY, Pos.E_CEMETERY]:
-            self.gm.updateObjState(pos)
+            self.updateObjState(self.gm, pos)
 
         for row in self.gm.board:
             for board in row:
-                self.gm.updateObjState(board)
+                self.updateObjState(self.gm, board)
         
         for obj in self.obj_list:
             obj.draw(screen)
