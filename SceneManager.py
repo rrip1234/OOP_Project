@@ -1,9 +1,7 @@
 from enum import Enum, auto
 from abc import ABCMeta, abstractmethod
-from re import L
-from turtle import update
 
-from discord import Game
+from pygame.event import Event
 from GameManager import GameManager, Pos, State, Phase
 from CardList import *
 from classes import *
@@ -11,22 +9,26 @@ from classes import *
 scene = None
 screen: pygame.Surface
 
-class GameState(Enum):
+class SceneState(Enum):
     MAIN = auto()
+    LOBBY = auto()
+    ROOM = auto()
     PLAY = auto()
     RESULT = auto()
     EDIT = auto()
 
-def StartScene(next: GameState):
+def StartScene(next: SceneState):
     global scene, screen
 
-    if next is GameState.MAIN:
+    if next is SceneState.MAIN:
         scene = MainScene()
-    elif next is GameState.PLAY:
+    elif next is SceneState.LOBBY:
+        scene = LobbyScene()
+    elif next is SceneState.PLAY:
         scene = PlayScene()
-    elif next is GameState.RESULT:
+    elif next is SceneState.RESULT:
         scene = ResultScene()
-    elif next is GameState.EDIT:
+    elif next is SceneState.EDIT:
         scene = DeckSceen()
 
 FONT_COLOR = (42, 36, 31)
@@ -165,11 +167,11 @@ class MainScene(Scene):
             event = events[pygame.MOUSEBUTTONDOWN]
             if self.start_btn.rect.collidepoint(event.pos):
                 if MIN_DECK_SIZE <= len(deck) and len(deck) <= MAX_DECK_SIZE:
-                    StartScene(GameState.PLAY)
+                    StartScene(SceneState.LOBBY)
                     return
                 print("Deck Count Error")
             if self.edit_button.rect.collidepoint(event.pos):
-                StartScene(GameState.EDIT)
+                StartScene(SceneState.EDIT)
                 return
 
         for obj in self.obj_list:
@@ -179,6 +181,34 @@ class MainScene(Scene):
 
 CARD_SIZE = 0.125
 BIG_SIZE = 0.25
+
+class LobbyScene(Scene):
+    def __init__(self):
+        self.room_surface = pygame.Surface((1200, 150))
+        self.room_surface.fill((110, 80, 40))
+
+        self.make_btn = makeObject('images/make_btn.png', 'make_btn', (1100, 700))
+
+        self.rooms = []
+
+    def showRooms(self):
+        for i, room in enumerate(self.rooms):
+            screen.blit(self.room_surface, (120, 100 + 200 * i))
+            nickname = getFont(1).render(room['nickname'], True, (0, 0, 0))
+            ip = getFont(1).render(room['ip'], True, (0, 0, 0))
+            screen.blit(nickname, (170, 120 + 200 * i))
+            screen.blit(ip, (220, 120 + 200 * i))
+    
+    def checkClick(self):
+        if self.make_btn.rect.collidepoint(self.click_pos):
+            StartScene(SceneState.ROOM)
+
+    def lateUpdate(self, events):
+        self.click_pos = (-10, -10)
+        if pygame.MOUSEBUTTONUP in events:
+            self.click_pos = events[pygame.MOUSEBUTTONUP].pos
+        
+        pass
 
 class PlayScene(Scene):
     def __init__(self):
@@ -307,7 +337,7 @@ class PlayScene(Scene):
 
     def checkClick(self, gm: GameManager, click_pos):
         if self.back_btn.rect.collidepoint(click_pos):
-            StartScene(GameState.MAIN)
+            StartScene(SceneState.MAIN)
             return
         
         new_clicked = None
@@ -435,7 +465,7 @@ class DeckSceen(Scene):
                     global deck#, pieces
                     deck = self.deck
                     #pieces = self.pieces
-                    StartScene(GameState.MAIN)
+                    StartScene(SceneState.MAIN)
                     return
                 click_pos = event.pos
             elif event.button >= 4:
